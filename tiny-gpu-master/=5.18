@@ -1,0 +1,6 @@
+Collecting plotly
+  Downloading plotly-6.7.0-py3-none-any.whl (9.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 9.9/9.9 MB 9.2 MB/s eta 0:00:00
+Requirement already satisfied: packaging in /mnt/d/tiny-gpu-test/tiny-gpu-master/cocotb_venv/lib/python3.10/site-packages (from plotly) (26.0)
+Requirement already satisfied: narwhals>=1.15.1 in /mnt/d/tiny-gpu-test/tiny-gpu-master/cocotb_venv/lib/python3.10/site-packages (from plotly) (2.18.0)
+Installing collected packages: plotly

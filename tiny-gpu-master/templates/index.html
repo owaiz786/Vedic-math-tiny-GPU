@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vedic GPU — tiny-gpu Benchmark Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:       #0a0c0f;
+    --bg2:      #0f1215;
+    --bg3:      #141820;
+    --panel:    #161b24;
+    --border:   #1e2836;
+    --border2:  #253040;
+    --std:      #e8803a;
+    --vedic:    #38c9a4;
+    --accent:   #4f8ef7;
+    --dim:      #4a5568;
+    --muted:    #6b7a90;
+    --text:     #c8d4e3;
+    --bright:   #eaf0fb;
+    --danger:   #e05252;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid noise background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.18;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Top scan line animation ── */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--vedic), transparent);
+    animation: scan 4s ease-in-out infinite;
+    z-index: 100;
+  }
+  @keyframes scan { 0%,100%{opacity:0} 50%{opacity:0.7} }
+
+  main { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border2);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .logo-block h1 {
+    font-family: var(--sans);
+    font-size: clamp(1.6rem, 4vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--bright);
+    line-height: 1;
+  }
+  .logo-block h1 span { color: var(--vedic); }
+  .logo-block p { font-size: 11px; color: var(--muted); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .status-bar { display: flex; gap: 1.5rem; align-items: center; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vedic); box-shadow: 0 0 8px var(--vedic); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .status-label { font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex; gap: 2rem; align-items: center;
+    margin-bottom: 2rem; padding: 0.75rem 1.25rem;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    width: fit-content;
+  }
+  .leg { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* ── Section heading ── */
+  .section-head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 1.25rem; margin-top: 2.5rem;
+  }
+  .section-head h2 {
+    font-family: var(--sans);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--bright);
+    letter-spacing: 0.02em;
+  }
+  .section-tag {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--accent); background: rgba(79,142,247,0.08);
+    border: 1px solid rgba(79,142,247,0.2);
+    padding: 2px 8px; border-radius: 3px;
+  }
+  .section-line { flex: 1; height: 1px; background: var(--border); }
+
+  /* ── Metric cards (top row) ── */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+  .mcard {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .mcard:hover { border-color: var(--border2); }
+  .mcard::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .mcard.std::before  { background: var(--std); }
+  .mcard.vedic::before { background: var(--vedic); }
+  .mcard.neutral::before { background: var(--accent); }
+  .mcard .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+  .mcard .val {
+    font-family: var(--sans);
+    font-size: 1.6rem; font-weight: 800;
+    color: var(--bright); line-height: 1;
+  }
+  .mcard .val.green { color: var(--vedic); }
+  .mcard .val.amber { color: var(--std); }
+  .mcard .sub { font-size: 10px; color: var(--muted); margin-top: 5px; }
+  .mcard .badge-up { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 700; margin-top: 6px; }
+  .mcard .badge-up.good { background: rgba(56,201,164,0.12); color: var(--vedic); border: 1px solid rgba(56,201,164,0.2); }
+  .mcard .badge-up.warn { background: rgba(232,128,58,0.12); color: var(--std); border: 1px solid rgba(232,128,58,0.2); }
+
+  /* ── Two-column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 1100px) { .three-col { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px)  { .three-col { grid-template-columns: 1fr; } }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg3);
+  }
+  .panel-head .title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .panel-head .tag   { font-size: 10px; color: var(--accent); background: rgba(79,142,247,0.07); border: 1px solid rgba(79,142,247,0.15); padding: 1px 7px; border-radius: 3px; }
+  .panel-body { padding: 1.25rem; }
+
+  /* ── Chart wrappers ── */
+  .chart-wrap { position: relative; width: 100%; }
+  .chart-wrap.h220 { height: 220px; }
+  .chart-wrap.h260 { height: 260px; }
+  .chart-wrap.h300 { height: 300px; }
+
+  /* ── Gate depth bars ── */
+  .gate-bars { display: flex; flex-direction: column; gap: 14px; }
+  .gate-row  { display: flex; align-items: center; gap: 10px; }
+  .gate-label { font-size: 11px; color: var(--muted); width: 130px; flex-shrink: 0; text-align: right; }
+  .gate-track {
+    flex: 1; height: 20px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 3px; overflow: hidden; position: relative;
+  }
+  .gate-fill {
+    height: 100%; border-radius: 2px;
+    display: flex; align-items: center; padding: 0 8px;
+    font-size: 10px; font-weight: 700;
+    transition: width 1s cubic-bezier(0.16,1,0.3,1);
+    white-space: nowrap;
+  }
+  .gf-std   { background: rgba(232,128,58,0.25); border-right: 2px solid var(--std); color: var(--std); }
+  .gf-vedic { background: rgba(56,201,164,0.18); border-right: 2px solid var(--vedic); color: var(--vedic); }
+
+  /* ── Kernel comparison rows ── */
+  .kernel-table { width: 100%; border-collapse: collapse; }
+  .kernel-table th {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); font-weight: 500; padding: 6px 10px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .kernel-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .kernel-table tr:last-child td { border-bottom: none; }
+  .kernel-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .td-std   { color: var(--std);   font-weight: 700; }
+  .td-vedic { color: var(--vedic); font-weight: 700; }
+  .td-delta { color: var(--accent); font-size: 11px; }
+  .td-op    { color: var(--muted); font-size: 11px; }
+
+  /* ── Mandelbrot fractal canvas ── */
+  .fractal-row { display: grid; grid-template-columns: auto 1fr; gap: 1.5rem; align-items: start; }
+  .fractal-canvases { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .fractal-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .fractal-label.std-label   { color: var(--std); }
+  .fractal-label.vedic-label { color: var(--vedic); }
+  canvas.fractal { width: 100%; image-rendering: pixelated; border: 1px solid var(--border); border-radius: 4px; display: block; }
+
+  /* ── SVD images ── */
+  .svd-images { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .svd-img-wrap { text-align: center; }
+  .svd-img-wrap .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
+  .svd-img-wrap img { width: 100%; border: 1px solid var(--border); border-radius: 4px; display: block; }
+
+  /* ── Speedup callout ── */
+  .speedup-callout {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; text-align: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1.25rem 1rem;
+  }
+  .speedup-callout .big {
+    font-family: var(--sans);
+    font-size: 2.2rem; font-weight: 800;
+    color: var(--vedic); line-height: 1;
+  }
+  .speedup-callout .sub { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .speedup-callout .note { font-size: 11px; color: var(--text); margin-top: 4px; max-width: 120px; text-align: center; }
+
+  /* ── Info box ── */
+  .info-box {
+    border-left: 2px solid var(--vedic);
+    padding: 10px 14px;
+    background: rgba(56,201,164,0.04);
+    border-radius: 0 4px 4px 0;
+    font-size: 12px; color: var(--muted);
+    margin-top: 1rem;
+    line-height: 1.6;
+  }
+  .info-box strong { color: var(--text); font-weight: 500; }
+
+  /* ── Loading overlay ── */
+  #loader {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 1rem; z-index: 999;
+    transition: opacity 0.5s;
+  }
+  #loader.gone { opacity: 0; pointer-events: none; }
+  .loader-text {
+    font-family: var(--sans); font-size: 1.4rem; font-weight: 800;
+    color: var(--bright); letter-spacing: -0.01em;
+  }
+  .loader-text span { color: var(--vedic); }
+  .loader-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .loader-bar { width: 200px; height: 2px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .loader-bar-fill { height: 100%; background: var(--vedic); animation: load 1.8s ease-in-out infinite; }
+  @keyframes load { 0%{width:0%} 60%{width:90%} 100%{width:100%} }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 1.25rem; }
+  .tab-btn {
+    padding: 6px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: transparent; color: var(--muted); cursor: pointer;
+    transition: all 0.15s; font-family: var(--mono);
+  }
+  .tab-btn:hover { border-color: var(--border2); color: var(--text); }
+  .tab-btn.active { background: var(--bg3); border-color: var(--border2); color: var(--bright); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  footer {
+    margin-top: 4rem; padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+    text-align: center; font-size: 11px; color: var(--dim);
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loader">
+  <div class="loader-text">Vedic<span>GPU</span></div>
+  <div class="loader-sub">Running benchmarks…</div>
+  <div class="loader-bar"><div class="loader-bar-fill"></div></div>
+</div>
+
+<main>
+  <!-- Header -->
+  <header>
+    <div class="logo-block">
+      <h1>Vedic<span>GPU</span> Benchmark Dashboard</h1>
+      <p>tiny-gpu · Standard ALU vs Vedic Math Optimisation · 8-bit Q3.5 Fixed-Point</p>
+    </div>
+    <div class="status-bar">
+      <div class="status-dot"></div>
+      <span class="status-label">Simulation complete</span>
+    </div>
+  </header>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="leg"><div class="leg-dot" style="background:var(--std)"></div> Standard ALU (ripple-carry · array multiplier)</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--vedic)"></div> Vedic ALU (Anurupyena add · Urdhva-Tiryakbhyam mul)</div>
+  </div>
+
+  <!-- ── SECTION 1: Hardware metrics ── -->
+  <div class="section-head">
+    <span class="section-tag">01</span>
+    <h2>Hardware Critical-Path Analysis</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div id="hw-metrics-grid" class="metrics-grid"></div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">Gate Depth — Addition (8-bit)</span>
+        <span class="tag">ADD</span>
+      </div>
+      <div class="panel-body">
+        <div class="gate-bars" id="gate-add"></div>
+        <div class="info-box" style="margin-top:1rem">
+          <strong>Standard:</strong> Ripple-carry — carry propagates sequentially through all 8 FA stages.<br>
+          <strong>Vedic:</strong> Carry-select (Anurupyena) — upper half precomputed for both carry assumptions; only 1 MUX delay on the critical path.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">Gate Depth — Multiplication (8-bit Q3.5)</span>
+        <span class="tag">FIXED_MUL</span>
+      </div>
+      <div class="panel-body">
+        <div class="gate-bars" id="gate-mul"></div>
+        <div class="info-box" style="margin-top:1rem">
+          <strong>Standard:</strong> Array multiplier — 64 AND partial products + 7-adder tree + explicit >>>5 shift stage.<br>
+          <strong>Vedic:</strong> Urdhva-Tiryakbhyam — 4 parallel 4×4 sub-products + 2 adder levels; >>>5 fused into bit-select wiring.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 2: Kernel cycle comparison ── -->
+  <div class="section-head" style="margin-top:3rem">
+    <span class="section-tag">02</span>
+    <h2>Kernel Simulation Results</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="two-col" style="margin-bottom:16px">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">Clock Cycles per Kernel</span>
+        <span class="tag">cocotb simulation</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap h260">
+          <canvas id="cycleChart" role="img" aria-label="Bar chart comparing clock cycles for Standard vs Vedic ALU across all kernels"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">ALU Operations per Kernel</span>
+        <span class="tag">operation breakdown</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap h260">
+          <canvas id="opChart" role="img" aria-label="Bar chart of ALU operation counts per kernel"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <span class="title">Kernel Comparison Table</span>
+      <span class="tag">all benchmarks</span>
+    </div>
+    <div class="panel-body" style="padding:0">
+      <table class="kernel-table" id="kernel-table">
+        <thead>
+          <tr>
+            <th>Kernel</th>
+            <th>Operations</th>
+            <th>Std sim cycles</th>
+            <th>Vedic sim cycles</th>
+            <th>Δ cycles</th>
+            <th>Std freq cap</th>
+            <th>Vedic freq cap</th>
+            <th>Freq gain</th>
+          </tr>
+        </thead>
+        <tbody id="kernel-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── SECTION 3: Mandelbrot ── -->
+  <div class="section-head" style="margin-top:3rem">
+    <span class="section-tag">03</span>
+    <h2>Mandelbrot Fractal — Hardware Rendering</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">16 × 16 fractal output — iteration depth map</span>
+        <span class="tag">FIXED_MUL · ADD · SUB</span>
+      </div>
+      <div class="panel-body">
+        <div class="fractal-canvases">
+          <div>
+            <div class="fractal-label std-label">Standard ALU</div>
+            <canvas class="fractal" id="fractal-std" width="16" height="16"></canvas>
+          </div>
+          <div>
+            <div class="fractal-label vedic-label">Vedic ALU</div>
+            <canvas class="fractal" id="fractal-vedic" width="16" height="16"></canvas>
+          </div>
+        </div>
+        <div class="info-box" style="margin-top:1rem">
+          Both renderers produce identical pixel output — the Vedic ALU's arithmetic is functionally equivalent. Colour maps iteration depth (brighter = more iterations = in the Mandelbrot set boundary region).
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">ALU cycle breakdown per pixel</span>
+        <span class="tag">per-pixel cost</span>
+      </div>
+      <div class="panel-body">
+        <div id="mandelbrot-stats" class="metrics-grid" style="grid-template-columns:1fr 1fr; margin-bottom:1rem"></div>
+        <div class="chart-wrap h220">
+          <canvas id="mandelbrotChart" role="img" aria-label="Mandelbrot ALU cycle comparison"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 4: SVD ── -->
+  <div class="section-head" style="margin-top:3rem">
+    <span class="section-tag">04</span>
+    <h2>SVD Image Decompression</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">64 × 64 camera image — rank-3 SVD reconstruction</span>
+        <span class="tag">FIXED_MUL + ADD</span>
+      </div>
+      <div class="panel-body">
+        <div class="svd-images" id="svd-images">
+          <div class="svd-img-wrap">
+            <div class="lbl">Original</div>
+            <img id="svd-orig" alt="Original image" />
+          </div>
+          <div class="svd-img-wrap">
+            <div class="lbl">Std ALU recon</div>
+            <img id="svd-std-recon" alt="Standard ALU reconstruction" />
+          </div>
+          <div class="svd-img-wrap">
+            <div class="lbl">Vedic ALU recon</div>
+            <img id="svd-vedic-recon" alt="Vedic ALU reconstruction" />
+          </div>
+        </div>
+        <div class="info-box" style="margin-top:1rem">
+          SVD compresses each 16×16 block to rank-3 (3 singular values). Hardware ALU reconstructs pixels using FIXED_MUL + ADD. Both ALUs produce identical PSNR — the Vedic version reaches the result using a shorter critical-path gate chain.
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">SVD decompression metrics</span>
+        <span class="tag">64×64 · K=3</span>
+      </div>
+      <div class="panel-body">
+        <div id="svd-stats" class="metrics-grid" style="grid-template-columns:1fr 1fr; margin-bottom:1.25rem"></div>
+        <div class="chart-wrap h220">
+          <canvas id="svdChart" role="img" aria-label="SVD ALU cycle comparison"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 5: freq / throughput projection ── -->
+  <div class="section-head" style="margin-top:3rem">
+    <span class="section-tag">05</span>
+    <h2>Frequency & Throughput Projection</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">Max synthesisable clock frequency (est.)</span>
+        <span class="tag">1 gate level ≈ 0.1 ns</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap h260">
+          <canvas id="freqChart" role="img" aria-label="Maximum clock frequency comparison Standard vs Vedic ALU"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">Pixel throughput — Mandelbrot (Mpx/s)</span>
+        <span class="tag">at max frequency</span>
+      </div>
+      <div class="panel-body">
+        <div class="chart-wrap h260">
+          <canvas id="throughputChart" role="img" aria-label="Pixel throughput comparison"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    tiny-gpu vedic math extension · cocotb simulation · standard vs vedic alu comparison
+  </footer>
+</main>
+
+<script>
+const STD_COLOR   = '#e8803a';
+const VEDIC_COLOR = '#38c9a4';
+const ACCENT      = '#4f8ef7';
+const GRID_COLOR  = '#1e2836';
+const TEXT_COLOR  = '#6b7a90';
+
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: TEXT_COLOR, font: { family: "'JetBrains Mono'", size: 11 } }, grid: { color: GRID_COLOR } },
+    y: { ticks: { color: TEXT_COLOR, font: { family: "'JetBrains Mono'", size: 11 } }, grid: { color: GRID_COLOR } }
+  }
+};
+
+function barDataset(label, data, color, pattern) {
+  return {
+    label, data,
+    backgroundColor: color + '28',
+    borderColor: color,
+    borderWidth: 2,
+    borderRadius: 3,
+    borderSkipped: false,
+  };
+}
+
+// ── Fractal renderer ─────────────────────────────────────────────────────────
+function drawFractal(canvasId, pixels, w, h) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const maxIter = Math.max(...pixels);
+  for (let i = 0; i < pixels.length; i++) {
+    const t = pixels[i] / maxIter;
+    const r = i * 4;
+    // Teal-to-dark palette
+    img.data[r]   = Math.round(t * 56);
+    img.data[r+1] = Math.round(t * 200 + (1-t)*30);
+    img.data[r+2] = Math.round(t * 164 + (1-t)*80);
+    img.data[r+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ── Metric card builder ───────────────────────────────────────────────────────
+function mcard(label, val, sub, accent, badgeText, badgeGood) {
+  return `<div class="mcard ${accent}">
+    <div class="label">${label}</div>
+    <div class="val ${accent === 'vedic' ? 'green' : accent === 'std' ? 'amber' : ''}">${val}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+    ${badgeText ? `<div class="badge-up ${badgeGood ? 'good' : 'warn'}">${badgeText}</div>` : ''}
+  </div>`;
+}
+
+// ── Main render ───────────────────────────────────────────────────────────────
+fetch('/api/all')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('loader').classList.add('gone');
+
+    const hw  = d.hw_metrics;
+    const std = hw.std, ved = hw.vedic;
+
+    // ── Hardware metrics cards ──────────────────────────────────────────────
+    const freqGain = ved.max_freq_mhz - std.max_freq_mhz;
+    const addGain  = Math.round((1 - ved.add_critical_ns / std.add_critical_ns) * 100);
+    const mulGain  = Math.round((1 - ved.mul_critical_ns / std.mul_critical_ns) * 100);
+
+    document.getElementById('hw-metrics-grid').innerHTML = [
+      mcard('ADD gate depth (std)',   std.add_gate_depth + ' levels', 'ripple-carry', 'std',   null),
+      mcard('ADD gate depth (vedic)', ved.add_gate_depth + ' levels', 'carry-select', 'vedic', `−${addGain}% critical path`, true),
+      mcard('MUL gate depth (std)',   std.mul_gate_depth + ' levels', 'array multiplier', 'std',  null),
+      mcard('MUL gate depth (vedic)', ved.mul_gate_depth + ' levels', 'Urdhva-Tiryakbhyam', 'vedic', `−${mulGain}% critical path`, true),
+      mcard('Max freq — std',  std.max_freq_mhz + ' MHz', `ADD path: ${std.add_critical_ns}ns`, 'std',   null),
+      mcard('Max freq — vedic',ved.max_freq_mhz + ' MHz', `ADD path: ${ved.add_critical_ns}ns`, 'vedic', `+${freqGain} MHz`, true),
+    ].join('');
+
+    // ── Gate depth bars ─────────────────────────────────────────────────────
+    const MAX_DEPTH = 20;
+    function gateBar(label, depth, cls, total) {
+      const pct = (depth / total * 100).toFixed(1);
+      return `<div class="gate-row">
+        <span class="gate-label">${label}</span>
+        <div class="gate-track">
+          <div class="gate-fill ${cls}" style="width:${pct}%">${depth} levels</div>
+        </div>
+      </div>`;
+    }
+    document.getElementById('gate-add').innerHTML =
+      gateBar('Standard (ripple)', std.add_gate_depth, 'gf-std', MAX_DEPTH) +
+      gateBar('Vedic (carry-sel)', ved.add_gate_depth, 'gf-vedic', MAX_DEPTH);
+
+    document.getElementById('gate-mul').innerHTML =
+      gateBar('Standard (array+shift)', std.mul_gate_depth, 'gf-std', MAX_DEPTH) +
+      gateBar('Vedic (Urdhva fused)', ved.mul_gate_depth, 'gf-vedic', MAX_DEPTH);
+
+    // ── Kernel data ─────────────────────────────────────────────────────────
+    const kernels = [
+      { key: 'matadd',     label: 'matadd',     opLabel: 'ADD' },
+      { key: 'matmul',     label: 'matmul',     opLabel: 'MUL+ADD' },
+      { key: 'mandelbrot', label: 'mandelbrot', opLabel: 'MUL+ADD+SUB' },
+      { key: 'svd',        label: 'SVD decom',  opLabel: 'MUL+ADD×5' },
+    ];
+
+    const stdCycles   = kernels.map(k => d[k.key].std.alu_cycles   || d[k.key].std.total_sim_cycles);
+    const vedicCycles = kernels.map(k => d[k.key].vedic.alu_cycles || d[k.key].vedic.total_sim_cycles);
+    const labels      = kernels.map(k => k.label);
+
+    // Cycle bar chart
+    new Chart(document.getElementById('cycleChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          barDataset('Standard ALU', stdCycles,   STD_COLOR),
+          barDataset('Vedic ALU',    vedicCycles, VEDIC_COLOR),
+        ]
+      },
+      options: { ...chartDefaults,
+        plugins: {
+          legend: { display: true, labels: { color: TEXT_COLOR, font: { family: "'JetBrains Mono'", size: 11 }, boxWidth: 12, boxHeight: 12 } }
+        }
+      }
+    });
+
+    // ALU op count chart
+    new Chart(document.getElementById('opChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          barDataset('ALU Operations', stdCycles, ACCENT),
+        ]
+      },
+      options: { ...chartDefaults, indexAxis: 'y' }
+    });
+
+    // Kernel table
+    const tbody = document.getElementById('kernel-tbody');
+    kernels.forEach((k, i) => {
+      const sc = stdCycles[i], vc = vedicCycles[i];
+      const delta = vc - sc;
+      const deltaStr = delta === 0 ? '±0' : (delta > 0 ? '+' + delta : delta);
+      tbody.innerHTML += `<tr>
+        <td style="color:var(--bright);font-weight:500">${k.label}</td>
+        <td class="td-op">${k.opLabel}</td>
+        <td class="td-std">${sc.toLocaleString()}</td>
+        <td class="td-vedic">${vc.toLocaleString()}</td>
+        <td class="td-delta">${deltaStr}</td>
+        <td class="td-std">${std.max_freq_mhz} MHz</td>
+        <td class="td-vedic">${ved.max_freq_mhz} MHz</td>
+        <td style="color:var(--vedic);font-size:11px">+${freqGain} MHz</td>
+      </tr>`;
+    });
+
+    // ── Mandelbrot ──────────────────────────────────────────────────────────
+    const mb = d.mandelbrot;
+    drawFractal('fractal-std',   mb.std.pixels,   mb.std.width,   mb.std.height);
+    drawFractal('fractal-vedic', mb.vedic.pixels, mb.vedic.width, mb.vedic.height);
+
+    const cyclesPerPixel = (mb.std.alu_cycles / (mb.std.width * mb.std.height)).toFixed(1);
+    document.getElementById('mandelbrot-stats').innerHTML = [
+      mcard('Total ALU cycles', mb.std.alu_cycles.toLocaleString(), 'both ALUs identical', 'neutral'),
+      mcard('Cycles per pixel', cyclesPerPixel, `${mb.std.width}×${mb.std.height} pixels`, 'neutral'),
+      mcard('Std throughput', `${(std.max_freq_mhz / cyclesPerPixel / 1000).toFixed(1)}Mpx/s`, `@ ${std.max_freq_mhz}MHz`, 'std'),
+      mcard('Vedic throughput', `${(ved.max_freq_mhz / cyclesPerPixel / 1000).toFixed(1)}Mpx/s`, `@ ${ved.max_freq_mhz}MHz`, 'vedic', `${(ved.max_freq_mhz / std.max_freq_mhz).toFixed(1)}× faster`, true),
+    ].join('');
+
+    new Chart(document.getElementById('mandelbrotChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Standard ALU', 'Vedic ALU'],
+        datasets: [{
+          label: 'ALU cycles',
+          data: [mb.std.alu_cycles, mb.vedic.alu_cycles],
+          backgroundColor: [STD_COLOR + '28', VEDIC_COLOR + '28'],
+          borderColor: [STD_COLOR, VEDIC_COLOR],
+          borderWidth: 2, borderRadius: 3,
+        }]
+      },
+      options: { ...chartDefaults }
+    });
+
+    // ── SVD ─────────────────────────────────────────────────────────────────
+    const svd = d.svd;
+    document.getElementById('svd-orig').src        = 'data:image/png;base64,' + svd.std.orig_img;
+    document.getElementById('svd-std-recon').src   = 'data:image/png;base64,' + svd.std.recon_img;
+    document.getElementById('svd-vedic-recon').src = 'data:image/png;base64,' + svd.vedic.recon_img;
+
+    document.getElementById('svd-stats').innerHTML = [
+      mcard('SVD ALU cycles', svd.std.alu_cycles.toLocaleString(), '5 ops per pixel', 'neutral'),
+      mcard('PSNR', svd.std.psnr + ' dB', 'rank-3 reconstruction', 'neutral'),
+      mcard('Std decompress', `${(std.max_freq_mhz / (svd.std.alu_cycles / (64*64)) / 1000).toFixed(2)}Mpx/s`, `@ ${std.max_freq_mhz}MHz`, 'std'),
+      mcard('Vedic decompress', `${(ved.max_freq_mhz / (svd.vedic.alu_cycles / (64*64)) / 1000).toFixed(2)}Mpx/s`, `@ ${ved.max_freq_mhz}MHz`, 'vedic', `${(ved.max_freq_mhz / std.max_freq_mhz).toFixed(1)}× faster`, true),
+    ].join('');
+
+    new Chart(document.getElementById('svdChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Standard ALU', 'Vedic ALU'],
+        datasets: [{
+          label: 'ALU cycles',
+          data: [svd.std.alu_cycles, svd.vedic.alu_cycles],
+          backgroundColor: [STD_COLOR + '28', VEDIC_COLOR + '28'],
+          borderColor: [STD_COLOR, VEDIC_COLOR],
+          borderWidth: 2, borderRadius: 3,
+        }]
+      },
+      options: { ...chartDefaults }
+    });
+
+    // ── Frequency projection ─────────────────────────────────────────────────
+    new Chart(document.getElementById('freqChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Standard ALU\n(ripple-carry)', 'Vedic ALU\n(carry-select)'],
+        datasets: [{
+          label: 'Max Clock Frequency (MHz)',
+          data: [std.max_freq_mhz, ved.max_freq_mhz],
+          backgroundColor: [STD_COLOR + '28', VEDIC_COLOR + '28'],
+          borderColor: [STD_COLOR, VEDIC_COLOR],
+          borderWidth: 2, borderRadius: 3,
+        }]
+      },
+      options: { ...chartDefaults,
+        scales: {
+          ...chartDefaults.scales,
+          y: { ...chartDefaults.scales.y, title: { display: true, text: 'MHz', color: TEXT_COLOR, font: { family: "'JetBrains Mono'", size: 11 } } }
+        }
+      }
+    });
+
+    // Throughput chart
+    const pixOpsStd   = kernels.map(k => {
+      const cyc = stdCycles[kernels.indexOf(k)];
+      const pix = k.key === 'mandelbrot' ? 256 : k.key === 'svd' ? 64*64 : 8;
+      return parseFloat((std.max_freq_mhz * 1e6 / (cyc / pix) / 1e6).toFixed(3));
+    });
+    const pixOpsVedic = kernels.map(k => {
+      const cyc = vedicCycles[kernels.indexOf(k)];
+      const pix = k.key === 'mandelbrot' ? 256 : k.key === 'svd' ? 64*64 : 8;
+      return parseFloat((ved.max_freq_mhz * 1e6 / (cyc / pix) / 1e6).toFixed(3));
+    });
+
+    new Chart(document.getElementById('throughputChart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          barDataset('Standard ALU', pixOpsStd,   STD_COLOR),
+          barDataset('Vedic ALU',    pixOpsVedic, VEDIC_COLOR),
+        ]
+      },
+      options: { ...chartDefaults,
+        plugins: {
+          legend: { display: true, labels: { color: TEXT_COLOR, font: { family: "'JetBrains Mono'", size: 11 }, boxWidth: 12, boxHeight: 12 } }
+        },
+        scales: {
+          ...chartDefaults.scales,
+          y: { ...chartDefaults.scales.y, title: { display: true, text: 'Mpx/s', color: TEXT_COLOR, font: { family: "'JetBrains Mono'", size: 11 } } }
+        }
+      }
+    });
+
+    // Animate gate bars from 0
+    setTimeout(() => {
+      document.querySelectorAll('.gate-fill').forEach(el => {
+        const w = el.style.width;
+        el.style.width = '0%';
+        requestAnimationFrame(() => { el.style.width = w; });
+      });
+    }, 200);
+
+  })
+  .catch(err => {
+    document.getElementById('loader').innerHTML = `
+      <div class="loader-text" style="color:var(--danger)">Error</div>
+      <div class="loader-sub">${err.message}</div>`;
+  });
+</script>
+</body>
+</html>
