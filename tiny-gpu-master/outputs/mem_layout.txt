@@ -1,0 +1,8 @@
+IMG_BASE    = 0x000  (16 bytes)
+W1_BASE     = 0x010  (128 bytes)
+B1_BASE     = 0x090  (8 bytes)
+W2_BASE     = 0x098  (80 bytes)
+B2_BASE     = 0x0C8  (10 bytes)
+HIDDEN_BASE = 0x0D2  (8 bytes, written by GPU)
+OUTPUT_BASE = 0x0DC  (10 bytes, written by GPU)
+Ground truth label: 7
